@@ -18,6 +18,10 @@ from agents.cache import get_cached, set_cached
 
 CACHE_TTL_SECONDS = 15 * 60  # price data refreshed at most every 15 minutes
 
+BENCHMARK_TICKER = "SPY"
+PERIOD_TRADING_DAYS = {"1mo": 22, "3mo": 65, "6mo": 130, "1y": 252, "2y": 504}
+VALID_PERIODS = tuple(PERIOD_TRADING_DAYS.keys())
+
 
 def _mock_history(ticker: str, period_days: int = 180) -> pd.DataFrame:
     """Deterministic synthetic OHLCV series so the app still runs end-to-end
@@ -41,17 +45,43 @@ def _mock_history(ticker: str, period_days: int = 180) -> pd.DataFrame:
     )
 
 
-def _fetch_history(ticker: str) -> tuple[pd.DataFrame, bool]:
+def _fetch_history(ticker: str, period: str = "6mo") -> tuple[pd.DataFrame, bool]:
     """Returns (dataframe, is_mock)."""
     try:
         import yfinance as yf
 
-        df = yf.Ticker(ticker).history(period="6mo", interval="1d")
+        df = yf.Ticker(ticker).history(period=period, interval="1d")
         if df is None or df.empty or "Close" not in df.columns:
             raise ValueError("empty history")
+        # yfinance returns a tz-aware index whose UTC offset can change
+        # across a DST boundary (e.g. for 1y/2y lookbacks); round-tripping
+        # that through cache.py as strings then re-parsing raises pandas'
+        # "mixed timezones" error. Dates are all we need here, so drop the
+        # timezone before it ever gets cached.
+        if df.index.tz is not None:
+            df.index = df.index.tz_localize(None)
         return df, False
     except Exception:
-        return _mock_history(ticker), True
+        return _mock_history(ticker, period_days=PERIOD_TRADING_DAYS.get(period, 130)), True
+
+
+def _fetch_benchmark(period: str = "6mo") -> tuple[pd.DataFrame, bool]:
+    """Returns (dataframe, is_mock) for the SPY benchmark, so the UI can
+    overlay an "are we beating the market" comparison on the price chart."""
+    cache_key = f"history::{BENCHMARK_TICKER}::{period}"
+    cached = get_cached("market_data", cache_key, CACHE_TTL_SECONDS)
+    if cached is not None:
+        df = pd.DataFrame(cached["data"])
+        df.index = pd.to_datetime(cached["index"])
+        return df, cached["is_mock"]
+
+    df, is_mock = _fetch_history(BENCHMARK_TICKER, period)
+    set_cached("market_data", cache_key, {
+        "data": df.reset_index(drop=True).to_dict(orient="list"),
+        "index": [str(i) for i in df.index],
+        "is_mock": is_mock,
+    })
+    return df, is_mock
 
 
 def _rsi(close: pd.Series, period: int = 14) -> pd.Series:
@@ -135,13 +165,19 @@ def _classify_trend(df: pd.DataFrame) -> tuple[str, list]:
     return signal, bullets
 
 
-def analyze_market_data(ticker: str) -> dict:
+def analyze_market_data(ticker: str, period: str = "6mo", include_benchmark: bool = False) -> dict:
     """Returns technical analysis for `ticker`: indicator-enriched dataframe,
-    a bullish/neutral/bearish signal, and plain-English bullets."""
+    a bullish/neutral/bearish signal, and plain-English bullets.
+
+    `period` controls the lookback window (one of VALID_PERIODS). When
+    `include_benchmark` is True, a normalized SPY comparison series is
+    attached under the "benchmark" key for the Stock Lookup chart overlay."""
     start = time.time()
     ticker = ticker.upper().strip()
+    if period not in PERIOD_TRADING_DAYS:
+        period = "6mo"
 
-    cache_key = f"history::{ticker}"
+    cache_key = f"history::{ticker}::{period}"
     cached = get_cached("market_data", cache_key, CACHE_TTL_SECONDS)
 
     if cached is not None:
@@ -149,7 +185,7 @@ def analyze_market_data(ticker: str) -> dict:
         df.index = pd.to_datetime(cached["index"])
         is_mock = cached["is_mock"]
     else:
-        df, is_mock = _fetch_history(ticker)
+        df, is_mock = _fetch_history(ticker, period)
         set_cached("market_data", cache_key, {
             "data": df.reset_index(drop=True).to_dict(orient="list"),
             "index": [str(i) for i in df.index],
@@ -162,7 +198,7 @@ def analyze_market_data(ticker: str) -> dict:
 
     latency_ms = round((time.time() - start) * 1000, 1)
 
-    return {
+    result = {
         "ticker": ticker,
         "df": enriched,
         "signal": signal,
@@ -170,4 +206,19 @@ def analyze_market_data(ticker: str) -> dict:
         "is_mock": is_mock,
         "latest_price": float(latest["Close"]),
         "latency_ms": latency_ms,
+        "period": period,
     }
+
+    if include_benchmark and ticker != BENCHMARK_TICKER:
+        try:
+            bench_df, bench_is_mock = _fetch_benchmark(period)
+            result["benchmark"] = {
+                "ticker": BENCHMARK_TICKER,
+                "df": bench_df,
+                "is_mock": bench_is_mock,
+            }
+        except Exception:
+            result["benchmark"] = None
+
+    return result
+

@@ -22,11 +22,11 @@ from agents.risk_agent import analyze_risk
 from agents.recommendation_agent import synthesize_recommendation
 
 
-def _build_specialist_graph(rss_urls, api_key, model):
+def _build_specialist_graph(rss_urls, api_key, model, period="6mo", include_benchmark=False):
     """Builds the RunnableParallel of the three independent specialists that
     don't depend on each other's output (market data, fundamentals, news).
     Risk runs after, since it consumes market data + fundamentals."""
-    market_data_chain = RunnableLambda(lambda ticker: analyze_market_data(ticker))
+    market_data_chain = RunnableLambda(lambda ticker: analyze_market_data(ticker, period, include_benchmark))
     fundamentals_chain = RunnableLambda(lambda ticker: analyze_fundamentals(ticker))
     news_chain = RunnableLambda(lambda ticker: analyze_news(ticker, rss_urls, api_key, model))
 
@@ -39,16 +39,21 @@ def _build_specialist_graph(rss_urls, api_key, model):
 
 def run_stock_analysis(ticker: str, rss_urls: list = None, risk_tolerance: int = 50,
                         api_key: str = "", model: str = "gpt-4o-mini",
-                        watchlist_sectors: list = None) -> dict:
+                        watchlist_sectors: list = None, period: str = "6mo",
+                        include_benchmark: bool = True) -> dict:
     """Runs the full multi-agent pipeline for one ticker and returns the
-    aggregated result plus an ordered trace for the Agent Trace tab."""
+    aggregated result plus an ordered trace for the Agent Trace tab.
+
+    `period` sets the price-history lookback (1mo/3mo/6mo/1y/2y). Market
+    Scan calls this with the default so scans stay fast; Stock Lookup lets
+    the user pick a longer window and overlays a SPY benchmark chart."""
     ticker = ticker.upper().strip()
     trace = new_trace()
     overall_start = time.time()
 
     record(trace, agent="Orchestrator", label=f"Received request for {ticker}", status="ok")
 
-    graph = _build_specialist_graph(rss_urls, api_key, model)
+    graph = _build_specialist_graph(rss_urls, api_key, model, period, include_benchmark)
 
     t0 = time.time()
     parallel_results = graph.invoke(ticker)
@@ -116,7 +121,8 @@ def run_market_scan(watchlist: list, rss_urls: list = None, risk_tolerance: int 
 
     def _run_one(t):
         try:
-            return run_stock_analysis(t, rss_urls, risk_tolerance, api_key, model, watchlist_sectors=sectors)
+            return run_stock_analysis(t, rss_urls, risk_tolerance, api_key, model,
+                                       watchlist_sectors=sectors, include_benchmark=False)
         except Exception as exc:
             return {"ticker": t.upper(), "error": str(exc)}
 

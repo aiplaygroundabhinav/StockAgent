@@ -15,12 +15,15 @@
 # =============================================================================
 
 import os
+import time
 
 import streamlit as st
 from dotenv import load_dotenv
 
 from agents.orchestrator import run_stock_analysis, run_market_scan
 from agents.news_agent import DEFAULT_RSS_FEEDS
+from agents.market_data_agent import VALID_PERIODS
+from agents import settings_store, scan_history, accuracy_log, alerts
 from ui.theme import inject_css, render_hero, render_footer
 from ui.lookup_panel import render_lookup_result
 from ui.scan_panel import render_scan_results
@@ -43,12 +46,19 @@ inject_css()
 # =============================================================================
 # SESSION STATE
 # =============================================================================
+# Persisted (non-secret) settings survive app restarts via settings_store's
+# SQLite-backed cache; the API key stays env/session-only and is never
+# written to disk.
+_persisted = settings_store.load_settings()
+
 for key, default in {
     "api_key": os.getenv("OPENAI_API_KEY", ""),
-    "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-    "watchlist": list(DEFAULT_WATCHLIST),
-    "rss_urls": list(DEFAULT_RSS_FEEDS),
-    "risk_tolerance": 50,
+    "model": _persisted.get("model", os.getenv("OPENAI_MODEL", "gpt-4o-mini")),
+    "watchlist": _persisted.get("watchlist", list(DEFAULT_WATCHLIST)),
+    "rss_urls": _persisted.get("rss_urls", list(DEFAULT_RSS_FEEDS)),
+    "risk_tolerance": _persisted.get("risk_tolerance", 50),
+    "alert_webhook_url": _persisted.get("alert_webhook_url", ""),
+    "lookup_period": "6mo",
     "ticker_input": "AAPL",
     "lookup_result": None,
     "scan_results": None,
@@ -70,6 +80,13 @@ with st.sidebar:
         "Ticker", label_visibility="collapsed", value=st.session_state.ticker_input,
         placeholder="e.g. AAPL", key="ticker_search_box",
     )
+    period = st.selectbox(
+        "Lookback period", options=list(VALID_PERIODS),
+        index=list(VALID_PERIODS).index(st.session_state.lookup_period),
+        help="How far back to chart price history + the SPY benchmark overlay.",
+        key="lookup_period_select",
+    )
+    st.session_state.lookup_period = period
     run_lookup = st.button("Analyze ticker", key="run_lookup_btn")
 
     st.markdown('<hr style="border-color:#253450;margin:1.2rem 0;">', unsafe_allow_html=True)
@@ -90,8 +107,9 @@ with st.sidebar:
             value="\n".join(st.session_state.rss_urls), height=100, key="sidebar_rss_edit",
         )
         new_rss = [u.strip() for u in rss_text.splitlines() if u.strip()]
-        if new_rss:
+        if new_rss and new_rss != st.session_state.rss_urls:
             st.session_state.rss_urls = new_rss
+            settings_store.save_settings(rss_urls=new_rss)
 
     st.markdown('<hr style="border-color:#253450;margin:1.2rem 0;">', unsafe_allow_html=True)
     st.markdown("""
@@ -116,9 +134,15 @@ if run_lookup and ticker_query.strip():
                 risk_tolerance=st.session_state.risk_tolerance,
                 api_key=st.session_state.api_key,
                 model=st.session_state.model,
+                period=st.session_state.lookup_period,
+                include_benchmark=True,
             )
             st.session_state.lookup_result = result
             push_trace_history(result["ticker"], "Stock Lookup", result["trace"])
+            accuracy_log.log_verdict(
+                result["ticker"], result["recommendation"]["verdict"],
+                result["recommendation"]["confidence"], result["market_data"]["latest_price"],
+            )
             st.toast(f"✅ Analysis complete for {result['ticker']} — {result['recommendation']['verdict']}", icon="✅")
         except Exception as exc:
             st.toast(f"❌ Analysis failed: {exc}", icon="❌")
@@ -134,11 +158,34 @@ if run_scan:
                 api_key=st.session_state.api_key,
                 model=st.session_state.model,
             )
-            st.session_state.scan_results = results
+            alerts_fired = 0
             for r in results:
-                if "error" not in r:
-                    push_trace_history(r["ticker"], "Market Scan", r["trace"])
-            st.toast(f"✅ Market scan complete for {len(results)} tickers", icon="✅")
+                if "error" in r:
+                    continue
+                push_trace_history(r["ticker"], "Market Scan", r["trace"])
+                verdict = r["recommendation"]["verdict"]
+                confidence = r["recommendation"]["confidence"]
+                price = r["market_data"]["latest_price"]
+
+                previous = scan_history.get_previous_verdict(r["ticker"])
+                change = scan_history.classify_change(previous, verdict)
+                r["change"] = change
+                scan_history.record_scan(r["ticker"], verdict, confidence, time.time())
+
+                accuracy_log.log_verdict(r["ticker"], verdict, confidence, price)
+
+                if st.session_state.alert_webhook_url and alerts.should_alert(change, verdict):
+                    fired = alerts.send_verdict_alert(
+                        st.session_state.alert_webhook_url, r["ticker"], verdict, confidence,
+                        r["recommendation"].get("summary", ""),
+                    )
+                    alerts_fired += int(fired)
+
+            st.session_state.scan_results = results
+            toast_msg = f"✅ Market scan complete for {len(results)} tickers"
+            if alerts_fired:
+                toast_msg += f" · {alerts_fired} alert(s) sent"
+            st.toast(toast_msg, icon="✅")
         except Exception as exc:
             st.toast(f"❌ Market scan failed: {exc}", icon="❌")
             st.error(f"Market scan failed: {exc}")
@@ -169,3 +216,4 @@ with tab_settings:
     render_settings_tab()
 
 render_footer()
+

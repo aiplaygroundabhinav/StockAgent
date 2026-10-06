@@ -50,14 +50,38 @@ Built with LangChain **LCEL** (`RunnableParallel` + chains) — **no LangGraph**
 Every data agent has a deterministic **mock-data fallback** (clearly labeled 🧪 in the
 UI) so the app keeps working end-to-end even without network access or an API key.
 
+## What's new
+
+- **🏆 Top Picks to Buy** — Market Scan ranks today's Buy/Strong Buy calls by verdict
+  strength + confidence and surfaces the top 3 as standout cards.
+- **Sector-relative fundamentals** — P/E is judged against a reference sector average
+  (Technology vs. Financial Services vs. Energy, etc.), not one fixed number for every
+  ticker, with a fallback to absolute thresholds for sectors outside the reference list.
+- **Analyst consensus** — pulls Wall Street's `recommendationKey` / mean target price /
+  analyst count from yfinance and flags whether it agrees or differs from our
+  Fundamentals signal.
+- **SPY benchmark overlay + lookback selector** — Stock Lookup lets you pick 1mo–2y
+  and shows a normalized "you vs. the market" chart alongside the indicator chart.
+- **Accuracy track record** — every verdict is logged with its price-at-call; the
+  Settings tab shows directional accuracy once calls are ≥1 day old, overall and
+  per-verdict-bucket, so the tool's calibration is visible and honest.
+- **Settings persistence** — watchlist, RSS sources, risk tolerance, and webhook URL
+  survive app restarts (SQLite-backed). The API key is never persisted to disk.
+- **Scan change detection + alerts** — Market Scan flags each ticker as
+  new/upgraded/downgraded/unchanged vs. its last scan, and can fire a webhook
+  (Slack/Discord-style JSON POST) when a ticker is upgraded into Buy/Strong Buy.
+  ⚠️ Scope note: this fires only during a scan you actually run — Streamlit has no
+  background scheduler, so this is "alert on change during an on-demand scan," not
+  unattended time-based monitoring.
+
 ## UI layout
 
 | Tab | Purpose |
 |---|---|
-| 🔎 **Stock Lookup** | Ticker search → verdict badge → rationale breakdown → Plotly chart (SMA/EMA/Bollinger) → agent trace |
-| 📊 **Market Scan** | Runs the pipeline across your watchlist; sortable table of verdicts; click a row to drill into its full card |
+| 🔎 **Stock Lookup** | Ticker search + lookback period → verdict badge → rationale breakdown (incl. analyst consensus) → Plotly chart (SMA/EMA/Bollinger) + SPY benchmark overlay → agent trace |
+| 📊 **Market Scan** | Runs the pipeline across your watchlist; Top Picks cards; sortable table with per-ticker verdicts + change-vs-last-scan badge; click a row to drill into its full card |
 | 🧠 **Agent Trace** | Per-query timeline across this session: agent sequence, inputs/outputs, latency, tokens |
-| ⚙️ **Settings** | API key, watchlist editor, RSS source editor, risk tolerance slider |
+| ⚙️ **Settings** | API key, watchlist editor, RSS source editor, risk tolerance slider, alert webhook URL, accuracy track record dashboard |
 
 ## Setup
 
@@ -84,21 +108,27 @@ and recommendation rationale.
 app.py                      # Streamlit entrypoint — sidebar, tabs, trigger wiring
 agents/
   orchestrator.py            # LCEL RunnableParallel pipeline + trace capture
-  market_data_agent.py        # Technical indicators
-  fundamentals_agent.py         # Valuation/growth/leverage metrics
+  market_data_agent.py        # Technical indicators + SPY benchmark fetch
+  fundamentals_agent.py         # Valuation/growth/leverage + analyst consensus
   news_agent.py                  # RSS ingestion + sentiment scoring
   risk_agent.py                    # Volatility/beta/concentration/earnings risk
   recommendation_agent.py           # Synthesis -> verdict + confidence + rationale
   callbacks.py                       # Trace capture helpers
   cache.py                             # SQLite TTL cache for external API calls
+  settings_store.py                      # Persists non-secret settings to disk
+  scan_history.py                          # "changed since last scan" detection
+  accuracy_log.py                            # Verdict logging + accuracy dashboard
+  alerts.py                                    # Webhook POST on verdict upgrade
 ui/
   theme.py               # Shared CSS, hero banner, badges, footer disclaimer
   lookup_panel.py          # Stock Lookup tab
-  scan_panel.py              # Market Scan tab
+  scan_panel.py              # Market Scan tab (incl. Top Picks)
   trace_panel.py                # Agent Trace tab
-  settings_panel.py               # Settings tab
+  settings_panel.py               # Settings tab (incl. accuracy dashboard)
 data/                              # cache.db created here at runtime (gitignored)
+tests/                              # pytest suite for agent logic (no network)
 requirements.txt
+requirements-dev.txt
 DEMO_GUIDE.md
 ```
 

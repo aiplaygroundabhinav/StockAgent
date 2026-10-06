@@ -175,6 +175,31 @@ input[type="password"] { font-family: var(--mono) !important; letter-spacing: 3p
 .disclaimer-footer {
     text-align:center; padding: 2rem 1rem 1rem; color: var(--muted); font-size: 12px; line-height: 1.8;
 }
+
+/* ── Top picks (Market Scan) ── */
+.pick-card {
+    position: relative; background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 1rem 1.2rem 1.1rem; height: 100%;
+    overflow: hidden;
+}
+.pick-card::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, #00D4AA, #8B7FFF);
+}
+.pick-rank { font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: 1.5px; }
+.pick-ticker { font-family: var(--mono); font-size: 20px; font-weight: 700; color: var(--text); margin: 2px 0 6px; }
+.pick-verdict { display:inline-block; font-family: var(--mono); font-size: 12px; font-weight:700; letter-spacing: 1px;
+                padding: 3px 12px; border-radius: 12px; text-transform: uppercase; margin-bottom: 8px; }
+.pick-confidence { font-size: 12.5px; color: var(--sub); margin-bottom: 6px; }
+.pick-summary { font-size: 13px; color: var(--sub); line-height: 1.55; }
+
+/* ── Scan change-detection badges ── */
+.change-badge { display:inline-block; font-family: var(--mono); font-size: 10.5px; font-weight:700;
+                letter-spacing: 0.5px; padding: 2px 9px; border-radius: 10px; text-transform: uppercase; }
+.change-upgraded   { background:#0D2A1E; border:1px solid #1A5C38; color:#4ADE80; }
+.change-downgraded { background:#2A0D0D; border:1px solid #5C1A1A; color:#FF6B6B; }
+.change-unchanged  { background:#1C2130; border:1px solid #3A4260; color:#6A7A96; }
+.change-new        { background:#1A1430; border:1px solid #3A2A6A; color:#8B7FFF; }
 </style>
 """
 
@@ -243,3 +268,16 @@ def signal_badge(label: str, signal: str) -> str:
 
 def mock_badge() -> str:
     return '<span class="badge badge-mock">🧪 mock data</span>'
+
+
+_CHANGE_LABELS = {
+    "upgraded": "▲ Upgraded",
+    "downgraded": "▼ Downgraded",
+    "unchanged": "— Unchanged",
+    "new": "✦ New",
+}
+
+
+def change_badge(change: str) -> str:
+    label = _CHANGE_LABELS.get(change, change)
+    return f'<span class="change-badge change-{change}">{label}</span>'

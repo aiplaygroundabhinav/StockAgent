@@ -50,6 +50,18 @@ Built with LangChain **LCEL** (`RunnableParallel` + chains) — **no LangGraph**
 Every data agent has a deterministic **mock-data fallback** (clearly labeled 🧪 in the
 UI) so the app keeps working end-to-end even without network access or an API key.
 
+## What's new (Multi-Portfolio Market Scan)
+
+- **📂 Multiple named portfolios** — replace the single fixed watchlist with as many
+  named ticker lists as you want (e.g. "My Watchlist", "Dividend Income", "Growth"),
+  managed in Settings → Portfolios (add / rename / edit tickers / delete).
+- **🔀 Scan across any combination** — the sidebar's Market Scan is now a multiselect:
+  pick one portfolio or several, and the scan runs across the deduplicated union —
+  buy suggestions are no longer limited to one fixed list.
+- **🏷️ Source tagging** — Market Scan's table and Top Picks cards show which
+  portfolio(s) each ticker came from, so a combined scan still tells you "this came
+  from your Growth list" rather than losing the source once lists are merged.
+
 ## What's new (Phase 1 — Trust & Validation)
 
 - **📒 Track Record tab** — every verdict is persisted to SQLite with full per-agent
@@ -100,7 +112,7 @@ UI) so the app keeps working end-to-end even without network access or an API ke
 | 📊 **Market Scan** | Runs the pipeline across your watchlist; Top Picks cards; sortable table with per-ticker verdicts + change-vs-last-scan badge; click a row to drill into its full card |
 | 🧠 **Agent Trace** | Per-query timeline across this session: agent sequence, inputs/outputs, latency, tokens |
 | 📒 **Track Record** | Backtested hit rate & avg excess return vs. SPY at 1/3/6mo horizons, by verdict type and confidence band |
-| ⚙️ **Settings** | API key, watchlist editor, RSS source editor, risk tolerance slider, alert webhook URL, accuracy track record dashboard |
+| ⚙️ **Settings** | API key, portfolios editor (add/rename/edit/delete), RSS source editor, risk tolerance slider, alert webhook URL, accuracy track record dashboard |
 
 ## Setup
 

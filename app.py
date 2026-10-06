@@ -34,6 +34,11 @@ from ui.track_record_panel import render_track_record_tab
 load_dotenv()
 
 DEFAULT_WATCHLIST = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "JPM"]
+DEFAULT_PORTFOLIOS = {
+    "My Watchlist": list(DEFAULT_WATCHLIST),
+    "Dividend Income": ["JNJ", "PG", "KO", "VZ", "PEP"],
+    "Growth": ["NVDA", "AMD", "SHOP", "CRWD", "PLTR"],
+}
 
 st.set_page_config(
     page_title="StockSense Agent",
@@ -52,10 +57,16 @@ inject_css()
 # written to disk.
 _persisted = settings_store.load_settings()
 
+_default_portfolios = _persisted.get("portfolios") or (
+    {"My Watchlist": _persisted["watchlist"]} if "watchlist" in _persisted else dict(DEFAULT_PORTFOLIOS)
+)
+
 for key, default in {
     "api_key": os.getenv("OPENAI_API_KEY", ""),
     "model": _persisted.get("model", os.getenv("OPENAI_MODEL", "gpt-4o-mini")),
     "watchlist": _persisted.get("watchlist", list(DEFAULT_WATCHLIST)),
+    "portfolios": _default_portfolios,
+    "selected_portfolios": list(_default_portfolios.keys()),
     "rss_urls": _persisted.get("rss_urls", list(DEFAULT_RSS_FEEDS)),
     "risk_tolerance": _persisted.get("risk_tolerance", 50),
     "alert_webhook_url": _persisted.get("alert_webhook_url", ""),
@@ -63,6 +74,7 @@ for key, default in {
     "ticker_input": "AAPL",
     "lookup_result": None,
     "scan_results": None,
+    "scan_portfolio_map": {},
     "trace_history": [],
 }.items():
     if key not in st.session_state:
@@ -93,11 +105,24 @@ with st.sidebar:
     st.markdown('<hr style="border-color:#253450;margin:1.2rem 0;">', unsafe_allow_html=True)
 
     st.markdown('<span class="section-label">📊 Market Scan</span>', unsafe_allow_html=True)
+    portfolio_names = list(st.session_state.portfolios.keys())
+    default_selection = [p for p in st.session_state.selected_portfolios if p in portfolio_names] or portfolio_names
+    selected_portfolios = st.multiselect(
+        "Portfolios to scan", options=portfolio_names, default=default_selection,
+        label_visibility="collapsed", key="portfolio_multiselect",
+        help="Scan one portfolio or several at once — buy suggestions are ranked across all selected lists, "
+             "not just one fixed watchlist. Manage portfolios in Settings.",
+    )
+    st.session_state.selected_portfolios = selected_portfolios
+    scan_tickers, scan_ticker_portfolios = settings_store.combine_portfolios(
+        st.session_state.portfolios, selected_portfolios
+    )
     st.markdown(
-        f'<p style="font-size:12px;color:#6A7A96;">Watchlist: {", ".join(st.session_state.watchlist)}</p>',
+        f'<p style="font-size:12px;color:#6A7A96;">'
+        f'{len(scan_tickers)} ticker(s) across {len(selected_portfolios)} portfolio(s)</p>',
         unsafe_allow_html=True,
     )
-    run_scan = st.button("Run market scan", key="run_scan_btn")
+    run_scan = st.button("Run market scan", key="run_scan_btn", disabled=not scan_tickers)
 
     st.markdown('<hr style="border-color:#253450;margin:1.2rem 0;">', unsafe_allow_html=True)
 
@@ -161,10 +186,11 @@ if run_lookup and ticker_query.strip():
             st.error(f"Analysis failed for {st.session_state.ticker_input}: {exc}")
 
 if run_scan:
-    with st.spinner(f"Scanning {len(st.session_state.watchlist)} tickers across all agents..."):
+    with st.spinner(f"Scanning {len(scan_tickers)} tickers across "
+                     f"{len(selected_portfolios)} portfolio(s)..."):
         try:
             results = run_market_scan(
-                st.session_state.watchlist,
+                scan_tickers,
                 rss_urls=st.session_state.rss_urls,
                 risk_tolerance=st.session_state.risk_tolerance,
                 api_key=st.session_state.api_key,
@@ -207,7 +233,8 @@ if run_scan:
                     alerts_fired += int(fired)
 
             st.session_state.scan_results = results
-            toast_msg = f"✅ Market scan complete for {len(results)} tickers"
+            st.session_state.scan_portfolio_map = scan_ticker_portfolios
+            toast_msg = f"✅ Market scan complete for {len(results)} tickers across {len(selected_portfolios)} portfolio(s)"
             if alerts_fired:
                 toast_msg += f" · {alerts_fired} alert(s) sent"
             st.toast(toast_msg, icon="✅")
@@ -230,9 +257,10 @@ with tab_lookup:
 
 with tab_scan:
     if st.session_state.scan_results:
-        render_scan_results(st.session_state.scan_results)
+        render_scan_results(st.session_state.scan_results, portfolio_map=st.session_state.scan_portfolio_map)
     else:
-        st.info("Click **Run market scan** in the sidebar to evaluate your whole watchlist.")
+        st.info("Select one or more portfolios and click **Run market scan** in the sidebar to see buy "
+                "suggestions across all of them.")
 
 with tab_trace:
     render_trace_tab()

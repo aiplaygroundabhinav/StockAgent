@@ -29,17 +29,13 @@ def render_settings_tab():
 
     st.markdown('<hr class="custom-divider">', unsafe_allow_html=True)
 
-    st.markdown('<span class="section-label">📋 Watchlist</span>', unsafe_allow_html=True)
-    watchlist_text = st.text_area(
-        "Watchlist", label_visibility="collapsed",
-        value=", ".join(st.session_state.watchlist),
-        help="Comma-separated tickers used by Market Scan. Saved automatically.",
-        key="settings_watchlist_input",
+    st.markdown('<span class="section-label">📋 Portfolios</span>', unsafe_allow_html=True)
+    st.caption(
+        "Create multiple named ticker lists (e.g. by strategy or account) and select any combination "
+        "from the sidebar's Market Scan — buy suggestions are then ranked across all of them, not just "
+        "one fixed watchlist."
     )
-    new_watchlist = [t.strip().upper() for t in watchlist_text.split(",") if t.strip()]
-    if new_watchlist and new_watchlist != st.session_state.watchlist:
-        st.session_state.watchlist = new_watchlist
-        settings_store.save_settings(watchlist=new_watchlist)
+    _render_portfolios_editor()
 
     st.markdown('<hr class="custom-divider">', unsafe_allow_html=True)
 
@@ -95,6 +91,62 @@ def render_settings_tab():
 
     st.markdown('<span class="section-label">🎯 Accuracy Track Record</span>', unsafe_allow_html=True)
     _render_accuracy_dashboard()
+
+
+def _render_portfolios_editor():
+    portfolios = dict(st.session_state.portfolios)
+
+    for name in list(portfolios.keys()):
+        with st.expander(f"📁 {name} ({len(portfolios[name])} tickers)", expanded=False):
+            tickers_text = st.text_area(
+                f"Tickers — {name}", label_visibility="collapsed",
+                value=", ".join(portfolios[name]),
+                help="Comma-separated tickers. Saved automatically.",
+                key=f"portfolio_tickers_{name}",
+            )
+            new_tickers = [t.strip().upper() for t in tickers_text.split(",") if t.strip()]
+            if new_tickers != portfolios[name]:
+                portfolios[name] = new_tickers
+                st.session_state.portfolios = portfolios
+                settings_store.save_settings(portfolios=portfolios)
+
+            rename_col, delete_col = st.columns([3, 1])
+            with rename_col:
+                new_name = st.text_input(
+                    "Rename portfolio", value=name, label_visibility="collapsed",
+                    key=f"portfolio_rename_input_{name}",
+                )
+            with delete_col:
+                if st.button("🗑 Delete", key=f"portfolio_delete_{name}", disabled=len(portfolios) <= 1):
+                    portfolios.pop(name)
+                    st.session_state.portfolios = portfolios
+                    settings_store.save_settings(portfolios=portfolios)
+                    st.rerun()
+            if new_name.strip() and new_name.strip() != name and new_name.strip() not in portfolios:
+                if st.button(f"Rename to '{new_name.strip()}'", key=f"portfolio_rename_btn_{name}"):
+                    portfolios[new_name.strip()] = portfolios.pop(name)
+                    st.session_state.portfolios = portfolios
+                    settings_store.save_settings(portfolios=portfolios)
+                    st.rerun()
+
+    st.markdown("**+ Add a new portfolio**")
+    add_col, btn_col = st.columns([3, 1])
+    with add_col:
+        new_portfolio_name = st.text_input(
+            "New portfolio name", label_visibility="collapsed",
+            placeholder="e.g. Dividend Income", key="new_portfolio_name_input",
+        )
+    with btn_col:
+        add_clicked = st.button("Add", key="add_portfolio_btn")
+    if add_clicked and new_portfolio_name.strip():
+        name = new_portfolio_name.strip()
+        if name not in portfolios:
+            portfolios[name] = []
+            st.session_state.portfolios = portfolios
+            settings_store.save_settings(portfolios=portfolios)
+            st.rerun()
+        else:
+            st.warning(f"A portfolio named '{name}' already exists.")
 
 
 def _render_accuracy_dashboard():

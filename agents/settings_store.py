@@ -14,7 +14,10 @@ _NAMESPACE = "settings"
 _KEY = "app_settings"
 _NEVER_EXPIRES = 10 ** 12  # effectively permanent for TTL-cache purposes
 
-PERSISTED_KEYS = ("watchlist", "rss_urls", "risk_tolerance", "model", "alert_webhook_url")
+PERSISTED_KEYS = (
+    "watchlist", "rss_urls", "risk_tolerance", "model", "alert_webhook_url",
+    "portfolios",
+)
 
 
 def load_settings() -> dict:
@@ -31,3 +34,28 @@ def save_settings(**kwargs) -> dict:
             current[k] = v
     set_cached(_NAMESPACE, _KEY, current)
     return current
+
+
+def combine_portfolios(portfolios: dict, selected_names: list) -> tuple:
+    """Merges the ticker lists of the named `portfolios` in `selected_names`
+    into one deduplicated, order-preserving ticker list, plus a
+    `{ticker: [portfolio_name, ...]}` map recording which selected
+    portfolio(s) each ticker came from — so a combined scan can still show
+    "this buy idea came from your Growth list" rather than losing the
+    source once lists are merged.
+
+    Lets Market Scan surface buy suggestions across several portfolios at
+    once instead of being limited to one fixed watchlist."""
+    tickers: list = []
+    ticker_portfolios: dict = {}
+    for name in selected_names:
+        for raw_ticker in portfolios.get(name, []):
+            ticker = raw_ticker.strip().upper()
+            if not ticker:
+                continue
+            if ticker not in ticker_portfolios:
+                tickers.append(ticker)
+                ticker_portfolios[ticker] = []
+            if name not in ticker_portfolios[ticker]:
+                ticker_portfolios[ticker].append(name)
+    return tickers, ticker_portfolios

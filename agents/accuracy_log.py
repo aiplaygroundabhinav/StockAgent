@@ -31,7 +31,13 @@ _BUY_VERDICTS = {"Strong Buy", "Buy"}
 _SELL_VERDICTS = {"Strong Sell", "Sell"}
 
 
-def log_verdict(ticker: str, verdict: str, confidence: int, price: float):
+def log_verdict(ticker: str, verdict: str, confidence: int, price: float,
+                 agent_signals: dict = None, data_flags: dict = None):
+    """`agent_signals` (e.g. {"technical": "bullish", ...}) and `data_flags`
+    (e.g. {"market_data": False, "fundamentals": False, "news": True}) are
+    optional and additive so existing 4-arg callers keep working; Phase 1
+    items 1-2 (verdict log + backtest engine) use them to break accuracy
+    down by signal agreement and to exclude/flag mock-data verdicts."""
     entries = get_cached(_NAMESPACE, _KEY, _NEVER_EXPIRES) or []
     entries.append({
         "ticker": ticker.upper(),
@@ -39,9 +45,17 @@ def log_verdict(ticker: str, verdict: str, confidence: int, price: float):
         "confidence": confidence,
         "price_at_call": price,
         "logged_at": time.time(),
+        "agent_signals": agent_signals or {},
+        "data_flags": data_flags or {},
     })
     entries = entries[-_MAX_ENTRIES:]  # cap growth
     set_cached(_NAMESPACE, _KEY, entries)
+
+
+def get_entries() -> list:
+    """Raw logged verdicts (most recent `_MAX_ENTRIES`). Used by
+    `agents.backtest_engine` to compute forward returns."""
+    return get_cached(_NAMESPACE, _KEY, _NEVER_EXPIRES) or []
 
 
 def _judge(verdict: str, return_pct: float) -> bool:

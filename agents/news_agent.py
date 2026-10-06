@@ -165,4 +165,5 @@ def analyze_news(ticker: str, rss_urls: list = None, api_key: str = "", model: s
         "is_general_fallback": is_general_fallback,
         "is_mock": len(all_entries) == 0,
         "latency_ms": latency_ms,
+        "fetched_at": time.time(),
     }

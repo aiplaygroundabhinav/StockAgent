@@ -75,6 +75,35 @@ def _rationale_section(title: str, text: str, mock: bool = False):
     )
 
 
+def _render_data_freshness(result: dict):
+    """Phase 1 item 3: per-source "data as of" timestamps so a user can
+    see how fresh (or stale) each agent's inputs were at call time."""
+    import datetime
+
+    sources = [
+        ("Market Data", result["market_data"].get("fetched_at")),
+        ("Fundamentals", result["fundamentals"].get("fetched_at")),
+        ("News/Sentiment", result["news"].get("fetched_at")),
+    ]
+    parts = []
+    for label, ts in sources:
+        if ts:
+            stamp = datetime.datetime.fromtimestamp(ts).strftime("%H:%M:%S")
+            parts.append(f"{label}: {stamp}")
+    if parts:
+        st.markdown(
+            f'<p style="font-size:11.5px;color:#6A7A96;margin-top:6px;">Data as of — {" · ".join(parts)}</p>',
+            unsafe_allow_html=True,
+        )
+    disagreement = result["market_data"].get("source_disagreement")
+    if disagreement and disagreement.get("flag"):
+        st.warning(
+            f"⚠️ Source disagreement: yfinance ${result['market_data']['latest_price']:.2f} vs "
+            f"{disagreement['fallback_source']} ${disagreement['fallback_price']:.2f} "
+            f"({disagreement['disagreement_pct']:+.1f}%)."
+        )
+
+
 _ANALYST_LEAN = {
     "strong_buy": "bullish", "buy": "bullish",
     "hold": "neutral", "none": "neutral",
@@ -103,18 +132,27 @@ def _analyst_consensus_badge(fd: dict) -> str:
 def render_lookup_result(result: dict):
     rec = result["recommendation"]
     md, fd, news, risk = result["market_data"], result["fundamentals"], result["news"], result["risk"]
+    rel_perf = result.get("relative_performance")
+
+    if rec.get("data_quality") == "unreliable":
+        st.warning(
+            "⚠️ Mock/stale data was used for one or more agents on this call — confidence has been capped "
+            f"and the verdict forced to Hold ({', '.join(rec.get('mock_sources', []))})."
+        )
 
     col1, col2 = st.columns([1, 2])
     with col1:
-        render_verdict_badge(rec["verdict"], rec["confidence"])
+        render_verdict_badge(rec["verdict"], rec["confidence"], label=rec.get("verdict_label"))
     with col2:
-        badges_html = " ".join([
+        badges = [
             signal_badge("Technical", md["signal"]),
             signal_badge("Fundamentals", fd["signal"]),
             signal_badge("Sentiment", news["signal"]),
             signal_badge("Risk", risk["signal"]),
-        ])
-        st.markdown(f'<div style="margin-top:8px;">{badges_html}</div>', unsafe_allow_html=True)
+        ]
+        if rel_perf:
+            badges.append(signal_badge("vs SPY/Sector", rel_perf["signal"]))
+        st.markdown(f'<div style="margin-top:8px;">{" ".join(badges)}</div>', unsafe_allow_html=True)
         st.markdown(f'<p style="color:#A8B4CC;margin-top:12px;">{rec["summary"]}</p>', unsafe_allow_html=True)
         consensus_html = _analyst_consensus_badge(fd)
         if consensus_html:
@@ -130,6 +168,11 @@ def render_lookup_result(result: dict):
     with rcol2:
         _rationale_section("💰 Fundamentals", rec["rationale"]["fundamentals"], mock=fd["is_mock"])
         _rationale_section("⚠️ Risk Flags", rec["rationale"]["risk"])
+
+    if rel_perf and rel_perf.get("bullets"):
+        _rationale_section("📐 Relative Performance vs SPY/Sector", " ".join(rel_perf["bullets"]), mock=rel_perf.get("is_mock", False))
+
+    _render_data_freshness(result)
 
     st.markdown('<hr class="custom-divider">', unsafe_allow_html=True)
     st.markdown('<span class="section-label">Price Chart</span>', unsafe_allow_html=True)

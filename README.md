@@ -50,7 +50,37 @@ Built with LangChain **LCEL** (`RunnableParallel` + chains) — **no LangGraph**
 Every data agent has a deterministic **mock-data fallback** (clearly labeled 🧪 in the
 UI) so the app keeps working end-to-end even without network access or an API key.
 
-## What's new
+## What's new (Multi-Portfolio Market Scan)
+
+- **📂 Multiple named portfolios** — replace the single fixed watchlist with as many
+  named ticker lists as you want (e.g. "My Watchlist", "Dividend Income", "Growth"),
+  managed in Settings → Portfolios (add / rename / edit tickers / delete).
+- **🔀 Scan across any combination** — the sidebar's Market Scan is now a multiselect:
+  pick one portfolio or several, and the scan runs across the deduplicated union —
+  buy suggestions are no longer limited to one fixed list.
+- **🏷️ Source tagging** — Market Scan's table and Top Picks cards show which
+  portfolio(s) each ticker came from, so a combined scan still tells you "this came
+  from your Growth list" rather than losing the source once lists are merged.
+
+## What's new (Phase 1 — Trust & Validation)
+
+- **📒 Track Record tab** — every verdict is persisted to SQLite with full per-agent
+  signals and data-source flags; a backtest engine computes forward returns at 1/3/6
+  months vs. SPY and buckets hit rate + average excess return by verdict type and
+  confidence band. Buckets under 20 samples are shown as "insufficient data" rather
+  than a misleadingly precise percentage.
+- **🛡️ Mock-data guard** — if any specialist fell back to mock/stale data, the
+  Recommendation agent now caps confidence at 40%, forces the verdict to
+  "Hold / Unreliable Data", and the UI shows a per-source "data as of" timestamp.
+  Mock-data results are automatically excluded from Top Picks.
+- **📈 Relative Performance signal** — a new 5th signal compares the stock's own
+  1/3/6/12-month return to SPY and to its GICS sector SPDR ETF, feeding directly into
+  the Recommendation agent's weighted score.
+- **🔀 Optional Finnhub fallback** — set `FINNHUB_API_KEY` in `.env` to cross-check the
+  latest price against a second data provider; material disagreement (>5%) is flagged
+  as a data-quality signal. Disabled (no-op) until a key is configured.
+
+## What's new (earlier)
 
 - **🏆 Top Picks to Buy** — Market Scan ranks today's Buy/Strong Buy calls by verdict
   strength + confidence and surfaces the top 3 as standout cards.
@@ -81,7 +111,8 @@ UI) so the app keeps working end-to-end even without network access or an API ke
 | 🔎 **Stock Lookup** | Ticker search + lookback period → verdict badge → rationale breakdown (incl. analyst consensus) → Plotly chart (SMA/EMA/Bollinger) + SPY benchmark overlay → agent trace |
 | 📊 **Market Scan** | Runs the pipeline across your watchlist; Top Picks cards; sortable table with per-ticker verdicts + change-vs-last-scan badge; click a row to drill into its full card |
 | 🧠 **Agent Trace** | Per-query timeline across this session: agent sequence, inputs/outputs, latency, tokens |
-| ⚙️ **Settings** | API key, watchlist editor, RSS source editor, risk tolerance slider, alert webhook URL, accuracy track record dashboard |
+| 📒 **Track Record** | Backtested hit rate & avg excess return vs. SPY at 1/3/6mo horizons, by verdict type and confidence band |
+| ⚙️ **Settings** | API key, portfolios editor (add/rename/edit/delete), RSS source editor, risk tolerance slider, alert webhook URL, accuracy track record dashboard |
 
 ## Setup
 
@@ -113,6 +144,9 @@ agents/
   news_agent.py                  # RSS ingestion + sentiment scoring
   risk_agent.py                    # Volatility/beta/concentration/earnings risk
   recommendation_agent.py           # Synthesis -> verdict + confidence + rationale
+  relative_performance_agent.py      # Stock vs. SPY / sector ETF return comparison
+  backtest_engine.py                   # Forward-return backtest for the Track Record tab
+  data_providers.py                      # yfinance + optional Finnhub fallback/cross-check
   callbacks.py                       # Trace capture helpers
   cache.py                             # SQLite TTL cache for external API calls
   settings_store.py                      # Persists non-secret settings to disk
@@ -124,6 +158,7 @@ ui/
   lookup_panel.py          # Stock Lookup tab
   scan_panel.py              # Market Scan tab (incl. Top Picks)
   trace_panel.py                # Agent Trace tab
+  track_record_panel.py           # Track Record tab (backtest breakdown)
   settings_panel.py               # Settings tab (incl. accuracy dashboard)
 data/                              # cache.db created here at runtime (gitignored)
 tests/                              # pytest suite for agent logic (no network)

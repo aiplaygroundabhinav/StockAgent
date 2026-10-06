@@ -14,20 +14,21 @@ from ui.lookup_panel import render_lookup_result
 from ui.theme import VERDICT_CLASS
 
 
-def _to_dataframe(scan_results: list) -> pd.DataFrame:
+def _to_dataframe(scan_results: list, portfolio_map: dict = None) -> pd.DataFrame:
+    portfolio_map = portfolio_map or {}
     rows = []
     for r in scan_results:
         if "error" in r:
             rows.append({
                 "Ticker": r["ticker"], "Verdict": "Error", "Confidence": 0,
                 "Price": None, "Technical": "-", "Fundamentals": "-", "Sentiment": "-", "Risk": "-",
-                "Change": "-",
+                "Change": "-", "Portfolio(s)": ", ".join(portfolio_map.get(r["ticker"], [])) or "-",
             })
             continue
         rec = r["recommendation"]
         rows.append({
             "Ticker": r["ticker"],
-            "Verdict": rec["verdict"],
+            "Verdict": rec.get("verdict_label", rec["verdict"]),
             "Confidence": rec["confidence"],
             "Price": round(r["market_data"]["latest_price"], 2),
             "Technical": r["market_data"]["signal"],
@@ -35,6 +36,8 @@ def _to_dataframe(scan_results: list) -> pd.DataFrame:
             "Sentiment": r["news"]["signal"],
             "Risk": r["risk"]["level"],
             "Change": _CHANGE_TEXT.get(r.get("change"), "-"),
+            "Data Quality": "⚠️ Unreliable" if rec.get("data_quality") == "unreliable" else "✅ OK",
+            "Portfolio(s)": ", ".join(portfolio_map.get(r["ticker"], [])) or "-",
         })
     return pd.DataFrame(rows)
 
@@ -52,7 +55,7 @@ _CHANGE_TEXT = {
 }
 
 
-def _render_top_picks(scan_results: list):
+def _render_top_picks(scan_results: list, portfolio_map: dict = None):
     """Surfaces the strongest Buy / Strong Buy calls from today's scan,
     ranked by verdict strength then confidence, so the watchlist scan
     answers "what should I look at first" rather than just reporting a
@@ -60,6 +63,7 @@ def _render_top_picks(scan_results: list):
     candidates = [
         r for r in scan_results
         if "error" not in r and r["recommendation"]["verdict"] in _BUY_VERDICTS
+        and r["recommendation"].get("data_quality") != "unreliable"
     ]
     candidates.sort(
         key=lambda r: (_VERDICT_ORDER[r["recommendation"]["verdict"]], r["recommendation"]["confidence"]),
@@ -80,6 +84,7 @@ def _render_top_picks(scan_results: list):
                 f"consider waiting for a clearer setup rather than forcing a trade.")
         return
 
+    portfolio_map = portfolio_map or {}
     cols = st.columns(len(top))
     for i, (col, r) in enumerate(zip(cols, top)):
         verdict = r["recommendation"]["verdict"]
@@ -87,6 +92,11 @@ def _render_top_picks(scan_results: list):
         price = r["market_data"]["latest_price"]
         summary = r["recommendation"].get("summary", "")
         cls = VERDICT_CLASS.get(verdict, "verdict-hold")
+        source_portfolios = ", ".join(portfolio_map.get(r["ticker"], []))
+        source_html = (
+            f'<div class="pick-portfolio" style="font-size:11px;color:#6A7A96;margin-top:2px;">'
+            f'from: {source_portfolios}</div>' if source_portfolios else ""
+        )
         with col:
             st.markdown(
                 f'<div class="pick-card">'
@@ -96,17 +106,19 @@ def _render_top_picks(scan_results: list):
                 f'<div class="pick-confidence">Confidence: <b style="color:#00D4AA;">{confidence}%</b>'
                 f' &nbsp;·&nbsp; ${price:.2f}</div>'
                 f'<div class="pick-summary">{summary}</div>'
+                f'{source_html}'
                 f'</div>',
                 unsafe_allow_html=True,
             )
-    st.caption("Ranked by verdict strength, then confidence. Not financial advice — for research/education only.")
+    st.caption("Ranked by verdict strength, then confidence, across every portfolio you selected. "
+               "Not financial advice — for research/education only.")
     st.markdown('<hr class="custom-divider">', unsafe_allow_html=True)
 
 
-def render_scan_results(scan_results: list):
-    _render_top_picks(scan_results)
+def render_scan_results(scan_results: list, portfolio_map: dict = None):
+    _render_top_picks(scan_results, portfolio_map)
 
-    df = _to_dataframe(scan_results)
+    df = _to_dataframe(scan_results, portfolio_map)
     df["_order"] = df["Verdict"].map(_VERDICT_ORDER)
     df = df.sort_values("_order", ascending=False).drop(columns="_order")
 

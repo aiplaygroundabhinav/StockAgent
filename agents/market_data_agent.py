@@ -65,23 +65,31 @@ def _fetch_history(ticker: str, period: str = "6mo") -> tuple[pd.DataFrame, bool
         return _mock_history(ticker, period_days=PERIOD_TRADING_DAYS.get(period, 130)), True
 
 
-def _fetch_benchmark(period: str = "6mo") -> tuple[pd.DataFrame, bool]:
-    """Returns (dataframe, is_mock) for the SPY benchmark, so the UI can
-    overlay an "are we beating the market" comparison on the price chart."""
-    cache_key = f"history::{BENCHMARK_TICKER}::{period}"
+def fetch_comparison_series(ticker: str = BENCHMARK_TICKER, period: str = "6mo") -> tuple[pd.DataFrame, bool]:
+    """Returns (dataframe, is_mock) for any ticker used as a comparison
+    series — SPY for the Stock Lookup chart overlay, or a sector ETF for
+    the Relative Performance agent (Phase 1 item 4). Shares the same cache
+    namespace/TTL as the primary history fetch."""
+    ticker = ticker.upper().strip()
+    cache_key = f"history::{ticker}::{period}"
     cached = get_cached("market_data", cache_key, CACHE_TTL_SECONDS)
     if cached is not None:
         df = pd.DataFrame(cached["data"])
         df.index = pd.to_datetime(cached["index"])
         return df, cached["is_mock"]
 
-    df, is_mock = _fetch_history(BENCHMARK_TICKER, period)
+    df, is_mock = _fetch_history(ticker, period)
     set_cached("market_data", cache_key, {
         "data": df.reset_index(drop=True).to_dict(orient="list"),
         "index": [str(i) for i in df.index],
         "is_mock": is_mock,
     })
     return df, is_mock
+
+
+# Backward-compatible alias for the SPY-only benchmark fetch used elsewhere.
+def _fetch_benchmark(period: str = "6mo") -> tuple[pd.DataFrame, bool]:
+    return fetch_comparison_series(BENCHMARK_TICKER, period)
 
 
 def _rsi(close: pd.Series, period: int = 14) -> pd.Series:
@@ -207,7 +215,23 @@ def analyze_market_data(ticker: str, period: str = "6mo", include_benchmark: boo
         "latest_price": float(latest["Close"]),
         "latency_ms": latency_ms,
         "period": period,
+        "fetched_at": time.time(),
     }
+
+    if not is_mock:
+        try:
+            from agents.data_providers import cross_check_price
+            cross_check = cross_check_price(ticker, result["latest_price"])
+            if cross_check is not None:
+                result["source_disagreement"] = cross_check
+                if cross_check["flag"]:
+                    bullets.append(
+                        f"⚠️ Price cross-check: {cross_check['fallback_source']} reports "
+                        f"${cross_check['fallback_price']:.2f} vs yfinance ${result['latest_price']:.2f} "
+                        f"({cross_check['disagreement_pct']:+.1f}% difference) — sources disagree materially."
+                    )
+        except Exception:
+            pass  # cross-check is best-effort; never break the pipeline over it
 
     if include_benchmark and ticker != BENCHMARK_TICKER:
         try:

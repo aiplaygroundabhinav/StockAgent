@@ -27,7 +27,7 @@ def _to_dataframe(scan_results: list) -> pd.DataFrame:
         rec = r["recommendation"]
         rows.append({
             "Ticker": r["ticker"],
-            "Verdict": rec["verdict"],
+            "Verdict": rec.get("verdict_label", rec["verdict"]),
             "Confidence": rec["confidence"],
             "Price": round(r["market_data"]["latest_price"], 2),
             "Technical": r["market_data"]["signal"],
@@ -35,6 +35,7 @@ def _to_dataframe(scan_results: list) -> pd.DataFrame:
             "Sentiment": r["news"]["signal"],
             "Risk": r["risk"]["level"],
             "Change": _CHANGE_TEXT.get(r.get("change"), "-"),
+            "Data Quality": "⚠️ Unreliable" if rec.get("data_quality") == "unreliable" else "✅ OK",
         })
     return pd.DataFrame(rows)
 
@@ -60,6 +61,7 @@ def _render_top_picks(scan_results: list):
     candidates = [
         r for r in scan_results
         if "error" not in r and r["recommendation"]["verdict"] in _BUY_VERDICTS
+        and r["recommendation"].get("data_quality") != "unreliable"
     ]
     candidates.sort(
         key=lambda r: (_VERDICT_ORDER[r["recommendation"]["verdict"]], r["recommendation"]["confidence"]),

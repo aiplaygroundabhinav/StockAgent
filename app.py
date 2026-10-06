@@ -29,6 +29,7 @@ from ui.lookup_panel import render_lookup_result
 from ui.scan_panel import render_scan_results
 from ui.trace_panel import render_trace_tab, push_trace_history
 from ui.settings_panel import render_settings_tab
+from ui.track_record_panel import render_track_record_tab
 
 load_dotenv()
 
@@ -142,6 +143,17 @@ if run_lookup and ticker_query.strip():
             accuracy_log.log_verdict(
                 result["ticker"], result["recommendation"]["verdict"],
                 result["recommendation"]["confidence"], result["market_data"]["latest_price"],
+                agent_signals={
+                    "technical": result["market_data"]["signal"],
+                    "fundamentals": result["fundamentals"]["signal"],
+                    "sentiment": result["news"]["signal"],
+                    "risk": result["risk"]["signal"],
+                },
+                data_flags={
+                    "market_data": result["market_data"]["is_mock"],
+                    "fundamentals": result["fundamentals"]["is_mock"],
+                    "news": result["news"].get("is_mock", False) or result["news"].get("is_general_fallback", False),
+                },
             )
             st.toast(f"✅ Analysis complete for {result['ticker']} — {result['recommendation']['verdict']}", icon="✅")
         except Exception as exc:
@@ -172,7 +184,20 @@ if run_scan:
                 r["change"] = change
                 scan_history.record_scan(r["ticker"], verdict, confidence, time.time())
 
-                accuracy_log.log_verdict(r["ticker"], verdict, confidence, price)
+                accuracy_log.log_verdict(
+                    r["ticker"], verdict, confidence, price,
+                    agent_signals={
+                        "technical": r["market_data"]["signal"],
+                        "fundamentals": r["fundamentals"]["signal"],
+                        "sentiment": r["news"]["signal"],
+                        "risk": r["risk"]["signal"],
+                    },
+                    data_flags={
+                        "market_data": r["market_data"]["is_mock"],
+                        "fundamentals": r["fundamentals"]["is_mock"],
+                        "news": r["news"].get("is_mock", False) or r["news"].get("is_general_fallback", False),
+                    },
+                )
 
                 if st.session_state.alert_webhook_url and alerts.should_alert(change, verdict):
                     fired = alerts.send_verdict_alert(
@@ -193,8 +218,8 @@ if run_scan:
 # =============================================================================
 # TABS
 # =============================================================================
-tab_lookup, tab_scan, tab_trace, tab_settings = st.tabs(
-    ["🔎 Stock Lookup", "📊 Market Scan", "🧠 Agent Trace", "⚙️ Settings"]
+tab_lookup, tab_scan, tab_trace, tab_track_record, tab_settings = st.tabs(
+    ["🔎 Stock Lookup", "📊 Market Scan", "🧠 Agent Trace", "📒 Track Record", "⚙️ Settings"]
 )
 
 with tab_lookup:
@@ -211,6 +236,9 @@ with tab_scan:
 
 with tab_trace:
     render_trace_tab()
+
+with tab_track_record:
+    render_track_record_tab()
 
 with tab_settings:
     render_settings_tab()

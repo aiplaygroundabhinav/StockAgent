@@ -227,4 +227,5 @@ def analyze_fundamentals(ticker: str) -> dict:
         "bullets": bullets,
         "is_mock": data.get("is_mock", False),
         "latency_ms": latency_ms,
+        "fetched_at": time.time(),
     }

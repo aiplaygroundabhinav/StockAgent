@@ -251,10 +251,11 @@ VERDICT_CLASS = {
 }
 
 
-def render_verdict_badge(verdict: str, confidence: int):
+def render_verdict_badge(verdict: str, confidence: int, label: str = None):
     cls = VERDICT_CLASS.get(verdict, "verdict-hold")
+    display_label = label or verdict
     st.markdown(
-        f'<div class="verdict-badge {cls}">{verdict}</div>'
+        f'<div class="verdict-badge {cls}">{display_label}</div>'
         f'<div style="margin-top:10px;color:#A8B4CC;font-family:var(--mono,monospace);font-size:13px;">'
         f'Confidence: <b style="color:#00D4AA;">{confidence}%</b></div>',
         unsafe_allow_html=True,

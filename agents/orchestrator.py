@@ -19,6 +19,7 @@ from agents.market_data_agent import analyze_market_data
 from agents.fundamentals_agent import analyze_fundamentals
 from agents.news_agent import analyze_news
 from agents.risk_agent import analyze_risk
+from agents.relative_performance_agent import analyze_relative_performance
 from agents.recommendation_agent import synthesize_recommendation
 
 
@@ -84,10 +85,30 @@ def run_stock_analysis(ticker: str, rss_urls: list = None, risk_tolerance: int =
            status="ok", detail=f"level={risk['level']} · volatility={risk['volatility_pct']}%",
            latency_ms=risk["latency_ms"])
 
-    recommendation = synthesize_recommendation(ticker, market_data, fundamentals, news, risk, api_key, model)
+    sector = fundamentals.get("metrics", {}).get("sector", "Unknown")
+    relative_performance = None
+    try:
+        relative_performance = analyze_relative_performance(ticker, market_data, sector)
+        record(trace, agent="Relative Performance", label="Compare returns vs SPY + sector ETF",
+               status="mock" if relative_performance["is_mock"] else "ok",
+               detail=f"signal={relative_performance['signal']} · sector_etf={relative_performance.get('sector_etf')}",
+               latency_ms=relative_performance["latency_ms"])
+    except Exception as exc:
+        record(trace, agent="Relative Performance", label="Compare returns vs SPY + sector ETF",
+               status="error", detail=str(exc))
+
+    data_flags = {
+        "market_data": market_data["is_mock"],
+        "fundamentals": fundamentals["is_mock"],
+        "news": news.get("is_mock", False) or news.get("is_general_fallback", False),
+    }
+
+    recommendation = synthesize_recommendation(ticker, market_data, fundamentals, news, risk, api_key, model,
+                                                relative_performance=relative_performance, data_flags=data_flags)
     record(trace, agent="Recommendation", label="Synthesize final verdict",
            status="ok", detail=f"verdict={recommendation['verdict']} · confidence={recommendation['confidence']}%"
-                                + (" (LLM synthesis)" if recommendation["used_llm"] else " (rule-based synthesis — no API key)"),
+                                + (" (LLM synthesis)" if recommendation["used_llm"] else " (rule-based synthesis — no API key)")
+                                + (" [MOCK-DATA GUARD APPLIED]" if recommendation.get("data_quality") == "unreliable" else ""),
            latency_ms=recommendation["latency_ms"], tokens=recommendation.get("tokens"))
 
     total_latency_ms = round((time.time() - overall_start) * 1000, 1)
@@ -100,6 +121,7 @@ def run_stock_analysis(ticker: str, rss_urls: list = None, risk_tolerance: int =
         "fundamentals": fundamentals,
         "news": news,
         "risk": risk,
+        "relative_performance": relative_performance,
         "recommendation": recommendation,
         "trace": trace,
         "total_latency_ms": total_latency_ms,

@@ -33,6 +33,26 @@ def test_log_verdict_appends_entry(monkeypatch):
     assert entries[0]["ticker"] == "AAPL"
 
 
+def test_log_verdict_stores_agent_signals_and_data_flags(monkeypatch):
+    _patch_cache(monkeypatch)
+    accuracy_log.log_verdict(
+        "AAPL", "Buy", 80, 150.0,
+        agent_signals={"technical": "bullish", "fundamentals": "neutral"},
+        data_flags={"market_data": False, "news": True},
+    )
+    entries = accuracy_log.get_entries()
+    assert entries[0]["agent_signals"]["technical"] == "bullish"
+    assert entries[0]["data_flags"]["news"] is True
+
+
+def test_get_entries_defaults_to_empty_fields(monkeypatch):
+    _patch_cache(monkeypatch)
+    accuracy_log.log_verdict("AAPL", "Buy", 80, 150.0)
+    entries = accuracy_log.get_entries()
+    assert entries[0]["agent_signals"] == {}
+    assert entries[0]["data_flags"] == {}
+
+
 def test_judge_buy_correct_on_price_up():
     assert accuracy_log._judge("Buy", 5.0) is True
     assert accuracy_log._judge("Buy", -5.0) is False

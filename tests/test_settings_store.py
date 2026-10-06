@@ -32,6 +32,15 @@ def test_save_settings_persists_portfolios(monkeypatch):
     assert result["portfolios"] == portfolios
 
 
+def test_save_settings_persists_theme(monkeypatch):
+    store = {}
+    monkeypatch.setattr(settings_store, "get_cached", lambda ns, k, ttl: store.get((ns, k)))
+    monkeypatch.setattr(settings_store, "set_cached", lambda ns, k, v: store.__setitem__((ns, k), v))
+
+    result = settings_store.save_settings(theme="light")
+    assert result["theme"] == "light"
+
+
 def test_combine_portfolios_merges_and_dedupes():
     portfolios = {
         "My Watchlist": ["AAPL", "MSFT"],

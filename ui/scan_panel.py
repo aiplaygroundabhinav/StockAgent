@@ -94,7 +94,7 @@ def _render_top_picks(scan_results: list, portfolio_map: dict = None):
         cls = VERDICT_CLASS.get(verdict, "verdict-hold")
         source_portfolios = ", ".join(portfolio_map.get(r["ticker"], []))
         source_html = (
-            f'<div class="pick-portfolio" style="font-size:11px;color:#6A7A96;margin-top:2px;">'
+            f'<div class="pick-portfolio" style="font-size:11px;color:var(--muted);margin-top:2px;">'
             f'from: {source_portfolios}</div>' if source_portfolios else ""
         )
         with col:
@@ -103,7 +103,7 @@ def _render_top_picks(scan_results: list, portfolio_map: dict = None):
                 f'<div class="pick-rank">#{i + 1} PICK</div>'
                 f'<div class="pick-ticker">{r["ticker"]}</div>'
                 f'<div class="pick-verdict {cls}">{verdict}</div>'
-                f'<div class="pick-confidence">Confidence: <b style="color:#00D4AA;">{confidence}%</b>'
+                f'<div class="pick-confidence">Confidence: <b style="color:var(--accent);">{confidence}%</b>'
                 f' &nbsp;·&nbsp; ${price:.2f}</div>'
                 f'<div class="pick-summary">{summary}</div>'
                 f'{source_html}'

@@ -24,7 +24,7 @@ from agents.orchestrator import run_stock_analysis, run_market_scan
 from agents.news_agent import DEFAULT_RSS_FEEDS
 from agents.market_data_agent import VALID_PERIODS
 from agents import settings_store, scan_history, accuracy_log, alerts
-from ui.theme import inject_css, render_hero, render_footer
+from ui.theme import inject_css, render_hero, render_footer, render_theme_toggle
 from ui.lookup_panel import render_lookup_result
 from ui.scan_panel import render_scan_results
 from ui.trace_panel import render_trace_tab, push_trace_history
@@ -47,8 +47,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-inject_css()
-
 # =============================================================================
 # SESSION STATE
 # =============================================================================
@@ -70,6 +68,7 @@ for key, default in {
     "rss_urls": _persisted.get("rss_urls", list(DEFAULT_RSS_FEEDS)),
     "risk_tolerance": _persisted.get("risk_tolerance", 50),
     "alert_webhook_url": _persisted.get("alert_webhook_url", ""),
+    "theme": _persisted.get("theme", "dark"),
     "lookup_period": "6mo",
     "ticker_input": "AAPL",
     "lookup_result": None,
@@ -79,6 +78,12 @@ for key, default in {
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
+
+inject_css(theme=st.session_state.theme)
+
+# Theme toggle lives top-right, above the hero banner, so it reads as a
+# global app setting rather than belonging to any one tab.
+render_theme_toggle()
 
 render_hero()
 
@@ -150,8 +155,13 @@ with st.sidebar:
 # =============================================================================
 # ANALYSIS TRIGGERS
 # =============================================================================
-if run_lookup and ticker_query.strip():
-    st.session_state.ticker_input = ticker_query.strip().upper()
+# A quick-ticker chip click (from the Stock Lookup empty state) runs the
+# same pipeline as the sidebar button — it just supplies its own ticker.
+_quick_ticker = st.session_state.pop("_quick_lookup_ticker", None)
+_lookup_ticker = _quick_ticker or (ticker_query.strip() if run_lookup and ticker_query.strip() else None)
+
+if _lookup_ticker:
+    st.session_state.ticker_input = _lookup_ticker.strip().upper()
     with st.spinner(f"Running multi-agent analysis for {st.session_state.ticker_input}..."):
         try:
             result = run_stock_analysis(
@@ -253,7 +263,15 @@ with tab_lookup:
     if st.session_state.lookup_result:
         render_lookup_result(st.session_state.lookup_result)
     else:
-        st.info("Enter a ticker in the sidebar and click **Analyze ticker** to run the multi-agent pipeline.")
+        st.info("Enter a ticker in the sidebar and click **Analyze ticker** to run the multi-agent pipeline, "
+                 "or try one of these:")
+        st.markdown('<p class="chip-hint">Quick start — popular tickers</p>', unsafe_allow_html=True)
+        chip_cols = st.columns(6)
+        for chip_col, chip_ticker in zip(chip_cols, ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL"]):
+            with chip_col:
+                if st.button(chip_ticker, key=f"quick_chip_{chip_ticker}"):
+                    st.session_state["_quick_lookup_ticker"] = chip_ticker
+                    st.rerun()
 
 with tab_scan:
     if st.session_state.scan_results:

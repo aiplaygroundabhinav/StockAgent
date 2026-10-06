@@ -16,7 +16,7 @@ _NEVER_EXPIRES = 10 ** 12  # effectively permanent for TTL-cache purposes
 
 PERSISTED_KEYS = (
     "watchlist", "rss_urls", "risk_tolerance", "model", "alert_webhook_url",
-    "portfolios",
+    "portfolios", "theme",
 )
 
 

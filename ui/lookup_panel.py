@@ -6,28 +6,33 @@
 import plotly.graph_objects as go
 import streamlit as st
 
-from ui.theme import render_verdict_badge, signal_badge, mock_badge
+from ui.theme import render_verdict_badge, signal_badge, mock_badge, get_chart_theme
 from ui.trace_panel import render_trace_timeline
+
+
+def _active_theme() -> str:
+    return st.session_state.get("theme", "dark")
 
 
 def _build_chart(result: dict):
     df = result["market_data"]["df"]
     ticker = result["ticker"]
+    ct = get_chart_theme(_active_theme())
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df.index, y=df["Close"], name="Close", line=dict(color="#00D4AA", width=2)))
     fig.add_trace(go.Scatter(x=df.index, y=df["SMA20"], name="SMA 20", line=dict(color="#8B7FFF", width=1.2)))
     fig.add_trace(go.Scatter(x=df.index, y=df["SMA50"], name="SMA 50", line=dict(color="#F5A623", width=1.2)))
     fig.add_trace(go.Scatter(x=df.index, y=df["EMA12"], name="EMA 12", line=dict(color="#4ADE80", width=1, dash="dot")))
-    fig.add_trace(go.Scatter(x=df.index, y=df["BB_upper"], name="BB Upper", line=dict(color="#6A7A96", width=1, dash="dash")))
-    fig.add_trace(go.Scatter(x=df.index, y=df["BB_lower"], name="BB Lower", line=dict(color="#6A7A96", width=1, dash="dash"),
-                              fill="tonexty", fillcolor="rgba(106,122,150,0.08)"))
+    fig.add_trace(go.Scatter(x=df.index, y=df["BB_upper"], name="BB Upper", line=dict(color=ct["gridcolor"], width=1, dash="dash")))
+    fig.add_trace(go.Scatter(x=df.index, y=df["BB_lower"], name="BB Lower", line=dict(color=ct["gridcolor"], width=1, dash="dash"),
+                              fill="tonexty", fillcolor=ct["bb_fill"]))
 
     fig.update_layout(
         title=f"{ticker} — Price with SMA/EMA/Bollinger Bands ({result['market_data'].get('period', '6mo')})",
-        template="plotly_dark",
-        paper_bgcolor="#131C2E", plot_bgcolor="#131C2E",
-        font=dict(family="DM Sans, sans-serif", color="#F0F2FF"),
+        template=ct["template"],
+        paper_bgcolor=ct["paper_bgcolor"], plot_bgcolor=ct["plot_bgcolor"],
+        font=dict(family="DM Sans, sans-serif", color=ct["font_color"]),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
         margin=dict(l=10, r=10, t=60, b=10),
         height=440,
@@ -46,6 +51,7 @@ def _build_benchmark_chart(result: dict):
     stock_df = result["market_data"]["df"]
     bench_df = benchmark["df"]
     ticker = result["ticker"]
+    ct = get_chart_theme(_active_theme())
 
     stock_norm = stock_df["Close"] / stock_df["Close"].iloc[0] * 100
     bench_norm = bench_df["Close"] / bench_df["Close"].iloc[0] * 100
@@ -57,9 +63,9 @@ def _build_benchmark_chart(result: dict):
 
     fig.update_layout(
         title=f"{ticker} vs {benchmark['ticker']} — normalized to 100",
-        template="plotly_dark",
-        paper_bgcolor="#131C2E", plot_bgcolor="#131C2E",
-        font=dict(family="DM Sans, sans-serif", color="#F0F2FF"),
+        template=ct["template"],
+        paper_bgcolor=ct["paper_bgcolor"], plot_bgcolor=ct["plot_bgcolor"],
+        font=dict(family="DM Sans, sans-serif", color=ct["font_color"]),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
         margin=dict(l=10, r=10, t=60, b=10),
         height=300,

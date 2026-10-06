@@ -50,6 +50,16 @@ Built with LangChain **LCEL** (`RunnableParallel` + chains) — **no LangGraph**
 Every data agent has a deterministic **mock-data fallback** (clearly labeled 🧪 in the
 UI) so the app keeps working end-to-end even without network access or an API key.
 
+## What's new (UI polish — light mode & onboarding)
+
+- **🌓 Light / dark theme toggle** — top-right switch on every screen swaps the
+  entire app (including chart colors) between the original dark navy/teal/purple
+  look and a clean light palette with the same accent colors; your choice is
+  saved and restored on the next visit.
+- **⚡ Quick-start tickers** — the Stock Lookup tab's empty state now offers
+  one-click chips for popular tickers (AAPL, MSFT, NVDA, TSLA, AMZN, GOOGL) so
+  a first-time user can see a full verdict without typing anything.
+
 ## What's new (Multi-Portfolio Market Scan)
 
 - **📂 Multiple named portfolios** — replace the single fixed watchlist with as many
